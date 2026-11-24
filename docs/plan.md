@@ -36,7 +36,7 @@ One line per task; tick it when its tests pass and its PR is merged.
 
 ### Phase 1 - contracts (days 1-2, both)   spec: docs/specs/01-contracts.md
 - [ ] common/field_catalog.py - the 29 fields and their level
-- [ ] common/states.py
+- [x] common/states.py (branch feat/01-states; plan docs/plan/2026-11-25-day1-states.md)
 - [ ] common/evidence.py, common/search_plan.py, common/finding_key.py
 - [ ] common/validation_report.py + a sample report that passes contract tests
 
@@ -106,3 +106,5 @@ Never cut: the fields agreed with the mentor, checkpoints, tests.
 
 - 2026-11-24 Anmol: seed loader done (14 tests, stdlib only); dev tools, CI on PRs,
   Python pinned to 3.12. Surprise: CSVs start with a BOM. Next: OK to format common/.
+- 2026-11-25 Anmol: common/states.py done (3 StrEnum machines, one move table each; 113 tests
+  pass). Surprise: StrEnum members equal across machines (CLOSED), so mixing is a TypeError.
