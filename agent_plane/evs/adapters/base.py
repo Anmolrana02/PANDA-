@@ -1,2 +1,1 @@
-"""The interface every source adapter follows.
-"""
+"""The interface every source adapter follows."""

@@ -1,2 +1,1 @@
-"""Saves and reads agent case state in Cosmos DB.
-"""
+"""Saves and reads agent case state in Cosmos DB."""

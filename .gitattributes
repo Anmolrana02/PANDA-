@@ -3,3 +3,5 @@
 *.sh text eol=lf
 *.png binary
 *.pdf binary
+# Seed fixtures copy the real CSVs byte for byte (BOM, CRLF): never convert them.
+data_plane/tests/fixtures/*.csv -text

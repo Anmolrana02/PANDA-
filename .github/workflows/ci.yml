@@ -1,10 +1,9 @@
-# CI: ruff, mypy and pytest on every pull request.
-# Only runs manually for now. When the first tests exist, add:
-#   pull_request:
-#     branches: [main]
+# CI: ruff, mypy and pytest on every pull request to main (or run manually).
 name: ci
 
 on:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:

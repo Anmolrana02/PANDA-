@@ -9,7 +9,8 @@ One line per task; tick it when its tests pass and its PR is merged.
 - Phase: 0 - setup and contracts
 - Next task for <YOUR NAME>: <task>
 - Next task for <TEAMMATE>: <task>
-- Blocked on: <nothing>
+- Blocked on: both owners' OK to `ruff format` the 7 files in `common/`
+  (CI's format check fails until then)
 
 ## Phases
 
@@ -23,7 +24,8 @@ One line per task; tick it when its tests pass and its PR is merged.
 - [ ] pyproject.toml, CI (ruff, mypy, pytest)
 - [ ] docker-compose.yml with Postgres, Neo4j, Cosmos emulator, MLflow server
 - [ ] Decide dev container or native; stop at two hours of setup
-- [ ] CSV loader that unwraps the extra quotes; load Gold, CAQH, trust matrix
+- [x] CSV loader that unwraps the extra quotes; load Gold, CAQH, trust matrix
+      (spec 00, branch feat/00-seed-loader)
 - [ ] Quick tests, 15 minutes each, before building on them:
   - [ ] query Databricks Free Edition from a laptop
   - [ ] LangGraph checkpoint saves and resumes on the Cosmos emulator
@@ -102,4 +104,5 @@ Never cut: the fields agreed with the mentor, checkpoints, tests.
 
 ## Session log (keep the last 10 lines)
 
-- <DATE> <who>: <what finished, what is next, anything surprising>
+- 2026-11-24 Anmol: seed loader done (14 tests, stdlib only); dev tools, CI on PRs,
+  Python pinned to 3.12. Surprise: CSVs start with a BOM. Next: OK to format common/.
