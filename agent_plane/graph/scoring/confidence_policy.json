@@ -1,0 +1,5 @@
+{
+  "_comment": "Case score bands and deductions only. Weights and trust scores stay in the trust matrix. Fill in once the mentor confirms the bands.",
+  "case_bands": {},
+  "deductions": []
+}

@@ -1,0 +1,8 @@
+# Who must review changes to which folder.
+# Replace the usernames with your GitHub usernames, then uncomment.
+
+# /common/        @your-username @teammate-username
+# /agent_plane/   @your-username
+# /portal_plane/  @teammate-username
+# /infra/         @teammate-username
+# /data_plane/    @your-username @teammate-username

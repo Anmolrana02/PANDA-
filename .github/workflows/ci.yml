@@ -1,0 +1,20 @@
+# CI: ruff, mypy and pytest on every pull request.
+# Only runs manually for now. When the first tests exist, add:
+#   pull_request:
+#     branches: [main]
+name: ci
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy .
+      - run: uv run pytest

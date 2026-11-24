@@ -1,0 +1,5 @@
+# Forces one line-ending style so Windows and Mac produce the same files.
+* text=auto eol=lf
+*.sh text eol=lf
+*.png binary
+*.pdf binary

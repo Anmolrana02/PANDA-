@@ -218,3 +218,33 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ---------------------------------------------------------------------------
+# PANDA project rules
+# ---------------------------------------------------------------------------
+
+# Seed / provider data (may be real internal data - never commit)
+data_plane/seed/*.csv
+data/
+*.csv
+!**/tests/fixtures/**/*.csv
+
+# Secrets
+.env.local
+
+# Personal Claude Code files
+CLAUDE.local.md
+.claude/settings.local.json
+
+# MLflow local runs
+mlruns/
+mlartifacts/
+
+# Node / Next.js
+node_modules/
+.next/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/

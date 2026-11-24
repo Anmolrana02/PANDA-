@@ -1,0 +1,3 @@
+# Local services: Postgres, Neo4j, Cosmos DB emulator, Service Bus emulator, MLflow.
+# Add each service here during Phase 0. Start with: docker compose up -d
+services: {}
