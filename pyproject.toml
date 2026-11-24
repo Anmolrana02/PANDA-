@@ -6,7 +6,9 @@ name = "panda"
 version = "0.1.0"
 description = "Agentic audit of a health insurer's provider directory"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pydantic>=2.14.4",
+]
 
 [tool.ruff]
 line-length = 100
