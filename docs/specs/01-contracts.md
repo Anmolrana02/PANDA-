@@ -14,6 +14,8 @@ which moves between statuses are allowed.
 
 ## Part 1 - common/states.py
 
+Status: done (2026-11-25, branch feat/01-states).
+
 ### Inputs and outputs
 
 - Input: a current status and a proposed next status.
@@ -108,9 +110,155 @@ Portal batch (confirmed by both owners 2026-11-25):
 
 ---
 
-## Part 2 - common/validation_report.py
+## Part 2 - common/field_catalog.py
+
+### What it is
+
+One fixed list of the 29 audit fields. For each field it says whether it
+belongs to the provider or to one location, how it is compared, which Gold
+columns hold it, and which trust-matrix names give it sources. Every other
+file looks fields up here instead of typing field names itself.
+
+### Inputs and outputs
+
+- Input: a field name, e.g. "phone".
+- Output: a frozen FieldSpec:
+  name="phone", level=LOCATION, mode=BY_LOCATION,
+  gold_columns=("phone_number",), trust_fields=("phone_number",),
+  coverage=COVERED
+- Helpers: get_field(name), all_fields(), provider_fields(),
+  location_fields(), covered_fields().
+
+### Vocabulary (StrEnums defined in this file)
+
+- FieldLevel: PROVIDER, LOCATION
+- ComparisonMode: ONE_TO_ONE, SET, BY_LOCATION
+  (validation_report.py imports it from here in Part 6)
+- Coverage: COVERED (has trust-matrix rows), PENDING_MENTOR (no rows yet)
+
+### The 29 fields
+
+Order follows Audit Fields.txt.
+
+| # | Field | Level | Mode | Gold column(s) | Trust-matrix name(s) | Coverage |
+|---|---|---|---|---|---|---|
+| 1 | npi_type | PROVIDER | ONE_TO_ONE | npi_type | npi_type | COVERED |
+| 2 | provider_name | PROVIDER | ONE_TO_ONE | first_name, middle_name, last_name | first_name, middle_name, last_name | COVERED |
+| 3 | provider_suffix | PROVIDER | ONE_TO_ONE | suffix | suffix | COVERED |
+| 4 | gender | PROVIDER | ONE_TO_ONE | gender | gender | COVERED |
+| 5 | degree | PROVIDER | ONE_TO_ONE | degree | degree | COVERED |
+| 6 | board_certifications | PROVIDER | ONE_TO_ONE | board_certifications | - | PENDING_MENTOR |
+| 7 | medical_school | PROVIDER | ONE_TO_ONE | provider_medical_school | - | PENDING_MENTOR |
+| 8 | accreditation_status | PROVIDER | ONE_TO_ONE | accreditation_status | - | PENDING_MENTOR |
+| 9 | specialty | PROVIDER | ONE_TO_ONE | primary_specialty, additional_specialties | primary_speciality, additional_specialities | COVERED |
+| 10 | role | PROVIDER | ONE_TO_ONE | role | role | COVERED |
+| 11 | practice_address | LOCATION | BY_LOCATION | provider_address_line_1, provider_address_line_2, provider_city, provider_state, provider_zip | the same five names | COVERED |
+| 12 | practice_locations | LOCATION | SET | practice_location_id, provider_address_line_1, provider_address_line_2, provider_city, provider_state, provider_zip | provider_address_line_1, provider_address_line_2, provider_city, provider_state, provider_zip | COVERED |
+| 13 | location_name | LOCATION | BY_LOCATION | location_name | location_name | COVERED |
+| 14 | phone | LOCATION | BY_LOCATION | phone_number | phone_number | COVERED |
+| 15 | website | LOCATION | BY_LOCATION | web_address | web_address | COVERED |
+| 16 | office_hours | LOCATION | BY_LOCATION | office_hours | - | PENDING_MENTOR |
+| 17 | weekend_hours | LOCATION | BY_LOCATION | weekend_hours | - | PENDING_MENTOR |
+| 18 | accepting_new_patients | LOCATION | BY_LOCATION | panel_status_accepting_new_patients | panel_status_accepting_new_patients | COVERED |
+| 19 | patient_age_restrictions | LOCATION | BY_LOCATION | patient_age_restrictions | - | PENDING_MENTOR |
+| 20 | languages | PROVIDER | ONE_TO_ONE | provider_languages | - | PENDING_MENTOR |
+| 21 | office_languages | LOCATION | BY_LOCATION | office_languages | - | PENDING_MENTOR |
+| 22 | accommodations | LOCATION | BY_LOCATION | office_services_ada | - | PENDING_MENTOR |
+| 23 | interpreter_services | LOCATION | BY_LOCATION | office_services_interpreter | - | PENDING_MENTOR |
+| 24 | telehealth | LOCATION | BY_LOCATION | remote_service_type | - | PENDING_MENTOR |
+| 25 | network_participation | PROVIDER | ONE_TO_ONE | (none yet - pd_offer_cd or lob_source?) | - | PENDING_MENTOR |
+| 26 | license_status | PROVIDER | ONE_TO_ONE | (none) | - | PENDING_MENTOR |
+| 27 | license_number | PROVIDER | ONE_TO_ONE | (none) | - | PENDING_MENTOR |
+| 28 | expiration_date | PROVIDER | ONE_TO_ONE | (none) | - | PENDING_MENTOR |
+| 29 | practice_organization | LOCATION | BY_LOCATION | org_name | - | PENDING_MENTOR |
+
+Totals: 29 fields, 13 COVERED, 16 PENDING_MENTOR.
+
+### Rules
+
+1. The catalog has exactly 29 fields, with the same names and order as
+   Audit Fields.txt.
+2. Field names are unique.
+3. Every FieldSpec is frozen: nothing can change it while the program runs.
+4. Only practice_locations uses SET.
+5. Every LOCATION field except practice_locations uses BY_LOCATION.
+   Every PROVIDER field uses ONE_TO_ONE.
+6. Every Gold column named here is a real column in gold_.csv.
+7. Every trust-matrix name named here is a real canonical_field_name in
+   trust.csv. (Note the spelling: trust says "speciality".)
+8. A field is COVERED if and only if it has at least one trust-matrix name.
+9. Only network_participation, license_status, license_number and
+   expiration_date may have no Gold column.
+10. get_field("unknown") raises UnknownField naming the field.
+11. Trust-matrix names that belong to no audit field (npi,
+    hospital_admitting_privileges) are left out on purpose; list them in a
+    constant IGNORED_TRUST_FIELDS so this is visible, not forgotten.
+12. Tests check rules 6 and 7 against fixed lists of column names copied
+    into a test fixture (headers only, no data), not against the real CSVs.
+
+### Out of scope
+
+- Normalizers and comparators per field (Phase 4)
+- Turning Gold list cells into per-location values (the loader and the
+  validator do that)
+- Whether a single-location provider uses ONE_TO_ONE instead of BY_LOCATION
+  (decided in Part 6)
+- Choosing sources for the 16 PENDING_MENTOR fields
+
+### Acceptance tests
+
+| # | Given | When | Then |
+|---|---|---|---|
+| 1 | the catalog | count all_fields() | 29 |
+| 2 | the catalog and the Audit Fields.txt list | compare names in order | identical |
+| 3 | the catalog | count covered_fields() | 13 |
+| 4 | the catalog | list fields with mode SET | only practice_locations |
+| 5 | get_field("phone") | read it | LOCATION, BY_LOCATION, gold ("phone_number",), COVERED |
+| 6 | get_field("specialty") | read trust_fields | primary_speciality, additional_specialities |
+| 7 | get_field("office_hours") | read it | trust_fields empty, PENDING_MENTOR |
+| 8 | get_field("license_number") | read gold_columns | empty |
+| 9 | get_field("fax") | call it | UnknownField naming "fax" |
+| 10 | the Gold header fixture | check every gold column in the catalog | all found |
+| 11 | the trust-matrix name fixture | check every trust name in the catalog | all found |
+| 12 | any FieldSpec | try to change its level | error (frozen) |
+| 13 | provider_fields() and location_fields() | combine them | all 29, no overlap |
+| 14 | every field with trust_fields | check coverage | COVERED; every field without them is PENDING_MENTOR |
+| 15 | IGNORED_TRUST_FIELDS plus all catalog trust names | compare with the trust fixture | they cover all 21 trust names exactly |
+
+### Files
+
+- New: common/field_catalog.py
+- New: common/tests/fixtures/gold_columns.txt and trust_field_names.txt
+  (header names only)
+- Changed: common/tests/test_contracts.py (add tests 1-15)
+- Hand-written by owner: none. The owner checks the table above; Claude Code
+  turns it into code.
+
+### Tasks
+
+- [x] Write failing tests for cases 1-15
+- [x] Write common/field_catalog.py until they pass
+- [x] ruff, mypy, pytest pass
+- [ ] Teammate reviews (common/ is shared)
+- [x] Tick "common/field_catalog.py" in docs/plan.md, add a session log line
 <next>
 
 ## Notes for the next session
 
-<fill in at the end>
+- 2026-11-25: Part 1 (states.py) done: 3 StrEnum machines, one read-only move
+  table each, 113 tests pass. Portal batch statuses confirmed by both owners.
+- Gotcha: StrEnum members compare equal by text (AgentCaseState.CLOSED ==
+  PortalBatchState.CLOSED), so states.py raises TypeError when machines are mixed.
+  Later contracts that key on statuses should keep the enum type, not plain strings.
+- CI's `ruff format --check` still fails on the 5 docstring-only files in common/
+  until both owners OK formatting them.
+- 2026-11-25: Part 2 (field_catalog.py) code done, 190 tests pass; waiting on
+  teammate review before marking it done. Added pydantic (FieldSpec is a frozen
+  BaseModel). Header-only fixtures in common/tests/fixtures/ (46 Gold columns,
+  21 trust names) were generated from the seed CSVs with load_seed.py.
+- Gold has look-alike columns the catalog does not use: provider_specialty,
+  provider_additional_specialty, provider_role, provider_accepting_new_patients
+  (the catalog uses primary_specialty, additional_specialties, role,
+  panel_status_accepting_new_patients). Confirm with the mentor which are current.
+- Next: Part 3 of spec 01 (evidence, search_plan, finding_key); its section needs
+  writing first.
