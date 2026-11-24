@@ -1,2 +1,1 @@
-"""Turns routed findings into review tasks for the portal.
-"""
+"""Turns routed findings into review tasks for the portal."""

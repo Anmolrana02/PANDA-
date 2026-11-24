@@ -1,2 +1,1 @@
-"""Postgres tables: audit, batch, case and reviewer action.
-"""
+"""Postgres tables: audit, batch, case and reviewer action."""

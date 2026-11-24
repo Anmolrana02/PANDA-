@@ -1,2 +1,1 @@
-"""Tests for the source adapters, using recorded fixtures.
-"""
+"""Tests for the source adapters, using recorded fixtures."""

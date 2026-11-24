@@ -248,3 +248,7 @@ node_modules/
 .DS_Store
 Thumbs.db
 .idea/
+
+# Local scratch files
+test.ipynb
+test.py

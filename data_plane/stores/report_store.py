@@ -1,2 +1,1 @@
-"""Saves and reads validation reports.
-"""
+"""Saves and reads validation reports."""

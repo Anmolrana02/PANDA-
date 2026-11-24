@@ -1,2 +1,1 @@
-"""Tests for normalizers, comparators and the validation node.
-"""
+"""Tests for normalizers, comparators and the validation node."""

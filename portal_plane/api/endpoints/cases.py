@@ -1,2 +1,1 @@
-"""Endpoints to get a case's fields and record a reviewer decision.
-"""
+"""Endpoints to get a case's fields and record a reviewer decision."""

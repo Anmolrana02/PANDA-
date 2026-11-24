@@ -17,5 +17,15 @@ python_version = "3.12"
 strict = true
 
 [tool.pytest.ini_options]
-markers = ["live: calls a real external service (skipped by default)"]
+markers = [
+    "live: calls a real external service (skipped by default)",
+    "seed: reads the real seed CSVs (skipped when they are absent, e.g. in CI)",
+]
 addopts = "-m 'not live'"
+
+[dependency-groups]
+dev = [
+    "mypy>=2.4.1",
+    "pytest>=9.2.0",
+    "ruff>=0.17.6",
+]
