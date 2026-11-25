@@ -1,11 +1,22 @@
 """Tests that every contract validates good examples and rejects bad ones, including a sample report."""
 
 import json
+from datetime import UTC, date, datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
 
+from common.evidence import (
+    AssertionStatus,
+    DataGroup,
+    EvidenceAssertion,
+    EvidenceBundle,
+    LocationRef,
+    QualityLabel,
+    SourceId,
+)
 from common.field_catalog import (
     IGNORED_TRUST_FIELDS,
     ComparisonMode,
@@ -560,3 +571,265 @@ def test_key_rule10_display_text_refused() -> None:
                 "address": "145 S St, Boston MA",
             }
         )
+
+
+# --- Part 4: evidence (docs/specs/01-contracts-02.md) ---
+
+NPPES_URL = "https://npiregistry.cms.hhs.gov/api/?number=1013489194&version=2.1"
+RETRIEVED = datetime(2026, 11, 9, 22, 35, 7, tzinfo=UTC)
+IST = timezone(timedelta(hours=5, minutes=30))
+OFFICE = LocationRef(display_address="145 S St, Boston MA 02111", location_name="Main office")
+
+
+def _assertion(**overrides: Any) -> EvidenceAssertion:
+    """The spec's NPPES degree example, with any field replaced."""
+    data: dict[str, Any] = {
+        "case_id": "CASE-637551BD11B2",
+        "npi": "1013489194",
+        "field_name": "degree",
+        "data_group": DataGroup.IDENTITY,
+        "source_id": SourceId.NPPES,
+        "raw_value": "LMHC",
+        "normalized_value": None,
+        "status": AssertionStatus.FOUND,
+        "status_detail": None,
+        "url_or_identifier": NPPES_URL,
+        "retrieved_at": RETRIEVED,
+        "source_last_update": date(2024, 3, 4),
+        "quality_label": QualityLabel.STATED,
+        "adapter_version": "nppes-0.1",
+        "location_ref": None,
+    }
+    data.update(overrides)
+    return EvidenceAssertion.model_validate(data)
+
+
+def _not_found(**overrides: Any) -> EvidenceAssertion:
+    """A NOT_FOUND version of the example."""
+    data: dict[str, Any] = {"status": AssertionStatus.NOT_FOUND, "raw_value": None}
+    data.update(overrides)
+    return _assertion(**data)
+
+
+def _bundle(*assertions: EvidenceAssertion, **overrides: Any) -> EvidenceBundle:
+    """A bundle matching the example's case, NPI, source and data group."""
+    data: dict[str, Any] = {
+        "case_id": "CASE-637551BD11B2",
+        "npi": "1013489194",
+        "source_id": SourceId.NPPES,
+        "data_group": DataGroup.IDENTITY,
+        "gold_version": "gold-2026-11-01",
+        "trust_matrix_version": "trust-v1",
+        "correlation_id": "corr-1",
+        "created_at": RETRIEVED,
+        "assertions": assertions or (_assertion(),),
+    }
+    data.update(overrides)
+    return EvidenceBundle.model_validate(data)
+
+
+def test_e01_nppes_degree_example_valid() -> None:
+    a = _assertion()
+    assert a.raw_value == "LMHC"
+    assert a.retrieved_at == RETRIEVED
+
+
+def test_e02_found_needs_raw_value() -> None:
+    with pytest.raises(ValidationError):
+        _assertion(raw_value="")
+
+
+def test_e03_not_found_allows_no_value() -> None:
+    with pytest.raises(ValidationError, match="no value allowed"):
+        _assertion(status=AssertionStatus.NOT_FOUND, raw_value="LMHC")
+
+
+def test_e04_not_found_with_status_detail_valid() -> None:
+    assert _not_found(status_detail="NOT_IN_EXTRACT").status_detail == "NOT_IN_EXTRACT"
+
+
+def test_e05_short_npi_refused() -> None:
+    with pytest.raises(ValidationError):
+        _assertion(npi="12345")
+
+
+def test_e06_leading_zero_npi_kept() -> None:
+    assert _assertion(npi="0123456789").npi == "0123456789"
+
+
+def test_e07_unknown_field_refused() -> None:
+    with pytest.raises(ValidationError, match="unknown field"):
+        _assertion(field_name="fax")
+
+
+def test_e08_raw_value_over_2000_refused() -> None:
+    with pytest.raises(ValidationError):
+        _assertion(raw_value="x" * 2001)
+
+
+def test_e09_naive_retrieved_at_refused() -> None:
+    with pytest.raises(ValidationError):
+        _assertion(retrieved_at=datetime(2026, 11, 9, 22, 35, 7))
+
+
+def test_e10_found_location_field_needs_office() -> None:
+    with pytest.raises(ValidationError, match="location field needs an office"):
+        _assertion(field_name="phone", data_group=DataGroup.LOCATION, raw_value="3038479374")
+
+
+def test_e11_provider_field_has_no_office() -> None:
+    with pytest.raises(ValidationError, match="provider field has no office"):
+        _assertion(location_ref=OFFICE)
+
+
+def test_e12_empty_url_or_identifier_refused() -> None:
+    with pytest.raises(ValidationError):
+        _assertion(url_or_identifier="")
+
+
+def test_e13_google_search_trust_name() -> None:
+    assert SourceId.GOOGLE_SEARCH.trust_matrix_name == "Google Searches"
+
+
+def test_e14_every_source_is_in_trust_matrix() -> None:
+    real = set(_lines(FIXTURES / "trust_source_systems.txt"))
+    assert {s.trust_matrix_name for s in SourceId} <= real
+
+
+def test_e15_mixed_sources_refused() -> None:
+    caqh = _assertion(source_id=SourceId.CAQH, url_or_identifier="caqh:row-1")
+    with pytest.raises(ValidationError, match="mixed sources"):
+        _bundle(caqh, _assertion())
+
+
+def test_e16_empty_bundle_refused() -> None:
+    with pytest.raises(ValidationError):
+        _bundle(assertions=())
+
+
+def test_e17_bundle_keeps_order() -> None:
+    items = (
+        _assertion(field_name="degree"),
+        _assertion(field_name="gender", raw_value="F"),
+        _assertion(field_name="npi_type", raw_value="1"),
+    )
+    assert _bundle(*items).assertions == items
+
+
+def test_e18_assertion_is_frozen() -> None:
+    a = _assertion()
+    with pytest.raises(ValidationError):
+        a.raw_value = "MD"
+
+
+def test_e19_bundle_json_round_trip() -> None:
+    b = _bundle(_assertion(), _not_found(field_name="gender", status_detail="NO_MATCH"))
+    assert EvidenceBundle.model_validate_json(b.model_dump_json()) == b
+
+
+def test_e20_empty_gold_version_refused() -> None:
+    with pytest.raises(ValidationError):
+        _bundle(gold_version="")
+
+
+# Extra tests for Part 4 rules that no numbered case covers
+
+
+def test_ev_rule3_not_found_normalized_value_refused() -> None:
+    with pytest.raises(ValidationError, match="no value allowed"):
+        _not_found(normalized_value="lmhc")
+
+
+def test_ev_rule3_found_without_normalized_value_valid() -> None:
+    assert _assertion(normalized_value=None).normalized_value is None
+
+
+@pytest.mark.parametrize(
+    "status",
+    [AssertionStatus.NO_VALUE, AssertionStatus.UNAVAILABLE, AssertionStatus.AMBIGUOUS],
+)
+def test_ev_rule3_other_statuses_refuse_values(status: AssertionStatus) -> None:
+    with pytest.raises(ValidationError, match="no value allowed"):
+        _assertion(status=status)
+
+
+def test_ev_rule4_raw_value_kept_exactly() -> None:
+    assert _assertion(raw_value="  lmhc ").raw_value == "  lmhc "
+
+
+def test_ev_rule5_raw_value_of_2000_valid() -> None:
+    assert _assertion(raw_value="x" * 2000).raw_value == "x" * 2000
+
+
+def test_ev_rule7_retrieved_at_stored_in_utc() -> None:
+    a = _assertion(retrieved_at=datetime(2026, 11, 10, 4, 5, 7, tzinfo=IST))
+    assert a.retrieved_at == RETRIEVED
+    assert a.retrieved_at.utcoffset() == timedelta(0)
+
+
+def test_ev_rule7_source_last_update_optional() -> None:
+    assert _assertion(source_last_update=None).source_last_update is None
+
+
+def test_ev_rule7_bundle_created_at_stored_in_utc() -> None:
+    b = _bundle(created_at=datetime(2026, 11, 10, 4, 5, 7, tzinfo=IST))
+    assert b.created_at.utcoffset() == timedelta(0)
+
+
+def test_ev_rule8_not_found_location_field_without_office_valid() -> None:
+    assert _not_found(field_name="phone", data_group=DataGroup.LOCATION).location_ref is None
+
+
+def test_ev_rule8_found_location_field_with_office_valid() -> None:
+    a = _assertion(
+        field_name="phone",
+        data_group=DataGroup.LOCATION,
+        raw_value="3038479374",
+        location_ref=OFFICE,
+    )
+    assert a.location_ref == OFFICE
+
+
+def test_ev_rule8_not_found_provider_field_with_office_refused() -> None:
+    with pytest.raises(ValidationError, match="provider field has no office"):
+        _not_found(location_ref=OFFICE)
+
+
+def test_ev_rule10_conclusions_refused() -> None:
+    with pytest.raises(ValidationError):
+        _assertion(matches_directory=True)
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"case_id": "CASE-OTHER"},
+        {"npi": "0123456789"},
+        {"data_group": DataGroup.ATTESTATION},
+    ],
+)
+def test_ev_rule12_bundle_parts_must_match(override: dict[str, Any]) -> None:
+    with pytest.raises(ValidationError):
+        _bundle(_assertion(), _assertion(**override))
+
+
+def test_ev_rule13_unavailable_only_bundle_valid() -> None:
+    failed = _assertion(
+        status=AssertionStatus.UNAVAILABLE, raw_value=None, status_detail="HTTP 503"
+    )
+    assert _bundle(failed).assertions[0].status is AssertionStatus.UNAVAILABLE
+
+
+def test_ev_rule16_assertion_with_office_json_round_trip() -> None:
+    a = _assertion(
+        field_name="phone",
+        data_group=DataGroup.LOCATION,
+        raw_value="(303) 847-9374",
+        location_ref=LocationRef(display_address="145 S St", practice_location_id="PL-1"),
+    )
+    assert EvidenceAssertion.model_validate_json(a.model_dump_json()) == a
+
+
+def test_ev_location_ref_needs_display_address() -> None:
+    with pytest.raises(ValidationError):
+        LocationRef(display_address="")
