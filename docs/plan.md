@@ -37,7 +37,8 @@ One line per task; tick it when its tests pass and its PR is merged.
 ### Phase 1 - contracts (days 1-2, both)   spec: docs/specs/01-contracts.md
 - [x] common/field_catalog.py - the 29 fields and their level (awaiting teammate review)
 - [x] common/states.py (branch feat/01-states; plan docs/plan/2026-11-25-day1-states.md)
-- [ ] common/evidence.py, common/search_plan.py, common/finding_key.py
+- [x] common/finding_key.py (branch feat/01-finding-key; plan docs/plan/2026-11-25-day2-finding-key.md; awaiting teammate review)
+- [ ] common/evidence.py, common/search_plan.py
 - [ ] common/validation_report.py + a sample report that passes contract tests
 
 ### Phase 2 - walking skeleton (day 3, <YOUR NAME>)   spec: 02-skeleton.md
@@ -110,3 +111,5 @@ Never cut: the fields agreed with the mentor, checkpoints, tests.
   pass). Surprise: StrEnum members equal across machines (CLOSED), so mixing is a TypeError.
 - 2026-11-25 Anmol: common/field_catalog.py done (29 frozen FieldSpecs, 13 covered; 190 tests
   pass); added pydantic. Surprise: Gold has duplicate-looking specialty/role columns.
+- 2026-11-25 Anmol: common/finding_key.py done (frozen FindingKey, JSON to_str/from_str; 224 tests
+  pass). Surprise: pydantic calls a custom __init__ from model_validate.
