@@ -31,6 +31,16 @@ from common.field_catalog import (
     provider_fields,
 )
 from common.finding_key import PROVIDER_SCOPE, FindingKey
+from common.search_plan import (
+    CaseType,
+    SearchPlan,
+    SkippedSource,
+    SkipReason,
+    SourceTask,
+    TaskOrigin,
+    UnplannedField,
+    UnplannedReason,
+)
 from common.states import (
     AGENT_CASE_MOVES,
     DISPATCH_MOVES,
@@ -833,3 +843,351 @@ def test_ev_rule16_assertion_with_office_json_round_trip() -> None:
 def test_ev_location_ref_needs_display_address() -> None:
     with pytest.raises(ValidationError):
         LocationRef(display_address="")
+
+
+# --- Part 5: search plan (docs/specs/01-contracts-02.md) ---
+# Trust weights below are example data for the shape only, not trust-matrix values.
+
+
+def _task(**overrides: Any) -> SourceTask:
+    """The spec example's nppes:identity task, with any field replaced."""
+    data: dict[str, Any] = {
+        "task_id": "nppes:identity",
+        "source_id": SourceId.NPPES,
+        "data_group": DataGroup.IDENTITY,
+        "fields": ("npi_type", "provider_name", "gender"),
+        "trust_weights": {"npi_type": 0.85, "provider_name": 0.30, "gender": 0.30},
+        "search_params": {"npi": "1013489194"},
+        "origin": TaskOrigin.TRUST_MATRIX,
+    }
+    data.update(overrides)
+    return SourceTask.model_validate(data)
+
+
+def _plan(**overrides: Any) -> SearchPlan:
+    """The spec's example plan, with any field replaced."""
+    data: dict[str, Any] = {
+        "case_id": "CASE-637551BD11B2",
+        "npi": "1013489194",
+        "case_type": CaseType.TARGETED,
+        "gold_version": "gold-2026-11-01",
+        "trust_matrix_version": "client-v2.0-caqh-nppes-web-google-2026-10-21",
+        "plan_version": "planner-0.1",
+        "requested_fields": ("npi_type", "provider_name", "gender", "office_hours"),
+        "tasks": (_task(),),
+        "skipped_sources": (),
+        "unplanned_fields": (
+            UnplannedField(field_name="office_hours", reason=UnplannedReason.NO_TRUST_ROWS),
+        ),
+    }
+    data.update(overrides)
+    return SearchPlan.model_validate(data)
+
+
+def _three_task_plan() -> SearchPlan:
+    tasks = (
+        _task(),
+        _task(
+            task_id="caqh:attestation",
+            source_id=SourceId.CAQH,
+            data_group=DataGroup.ATTESTATION,
+            fields=("degree", "specialty"),
+            trust_weights={"degree": 0.9, "specialty": 0.8},
+            search_params={"npi": "1013489194"},
+        ),
+        _task(
+            task_id="provider_website:location",
+            source_id=SourceId.PROVIDER_WEBSITE,
+            data_group=DataGroup.LOCATION,
+            fields=("phone", "website"),
+            trust_weights={"phone": 0.6, "website": 0.7},
+            search_params={"url": "https://example.org"},
+        ),
+    )
+    return _plan(
+        requested_fields=(
+            "npi_type",
+            "provider_name",
+            "gender",
+            "degree",
+            "specialty",
+            "phone",
+            "website",
+        ),
+        tasks=tasks,
+        unplanned_fields=(),
+    )
+
+
+def test_s01_example_plan_valid() -> None:
+    plan = _plan()
+    assert plan.tasks[0].task_id == "nppes:identity"
+
+
+def test_s02_requested_field_not_accounted_for() -> None:
+    task = _task(
+        fields=("npi_type", "provider_name"), trust_weights={"npi_type": 0.85, "provider_name": 0.3}
+    )
+    with pytest.raises(ValidationError, match="not accounted for"):
+        _plan(tasks=(task,))
+
+
+def test_s03_field_in_task_and_unplanned_refused() -> None:
+    with pytest.raises(ValidationError):
+        _plan(
+            requested_fields=("npi_type", "provider_name", "gender"),
+            unplanned_fields=(
+                UnplannedField(field_name="gender", reason=UnplannedReason.NO_ALLOWED_SOURCE),
+            ),
+        )
+
+
+def test_s04_pending_mentor_field_in_task_refused() -> None:
+    task = _task(
+        fields=("npi_type", "provider_name", "gender", "office_hours"),
+        trust_weights={"npi_type": 0.85, "provider_name": 0.3, "gender": 0.3, "office_hours": 0.5},
+    )
+    with pytest.raises(ValidationError, match="no trust rows"):
+        _plan(tasks=(task,), unplanned_fields=())
+
+
+def test_s05_task_field_not_requested_refused() -> None:
+    with pytest.raises(ValidationError):
+        _plan(
+            requested_fields=("npi_type", "provider_name", "office_hours"),
+        )
+
+
+def test_s06_duplicate_task_refused() -> None:
+    first = _task(fields=("npi_type",), trust_weights={"npi_type": 0.85})
+    second = _task(
+        fields=("provider_name", "gender"), trust_weights={"provider_name": 0.3, "gender": 0.3}
+    )
+    with pytest.raises(ValidationError, match="duplicate task"):
+        _plan(tasks=(first, second))
+
+
+def test_s07_task_id_format() -> None:
+    with pytest.raises(ValidationError, match="must be 'nppes:identity'"):
+        _task(task_id="nppes-identity")
+
+
+def test_s08_missing_trust_weight_refused() -> None:
+    with pytest.raises(ValidationError):
+        _task(trust_weights={"npi_type": 0.85, "provider_name": 0.30})
+
+
+@pytest.mark.parametrize("weight", [0, 1.2, -0.1])
+def test_s09_weight_out_of_range_refused(weight: float) -> None:
+    with pytest.raises(ValidationError):
+        _task(trust_weights={"npi_type": weight, "provider_name": 0.3, "gender": 0.3})
+
+
+def test_s10_secret_search_param_refused() -> None:
+    with pytest.raises(ValidationError, match="secrets not allowed"):
+        _task(search_params={"api_key": "x"})
+
+
+def test_s11_empty_search_params_refused() -> None:
+    with pytest.raises(ValidationError):
+        _task(search_params={})
+
+
+def test_s12_skipped_and_task_refused() -> None:
+    skip = SkippedSource(
+        source_id=SourceId.NPPES, data_group=DataGroup.IDENTITY, reason=SkipReason.NOT_ALLOWED
+    )
+    with pytest.raises(ValidationError):
+        _plan(skipped_sources=(skip,))
+
+
+def test_s13_empty_requested_fields_refused() -> None:
+    with pytest.raises(ValidationError):
+        _plan(requested_fields=(), tasks=(), unplanned_fields=())
+
+
+def test_s14_tasks_for_field() -> None:
+    plan = _plan()
+    assert plan.tasks_for_field("gender") == (plan.tasks[0],)
+
+
+def test_s15_task_order_kept() -> None:
+    plan = _three_task_plan()
+    assert [t.task_id for t in plan.tasks] == [
+        "nppes:identity",
+        "caqh:attestation",
+        "provider_website:location",
+    ]
+
+
+def test_s16_plan_json_round_trip() -> None:
+    plan = _plan()
+    assert SearchPlan.model_validate_json(plan.model_dump_json()) == plan
+
+
+def test_s17_plan_is_frozen() -> None:
+    plan = _plan()
+    with pytest.raises(ValidationError):
+        plan.tasks[0].fields = ("gender",)
+
+
+def test_s18_no_tasks_all_unplanned_valid() -> None:
+    plan = _plan(
+        requested_fields=("office_hours", "gender"),
+        tasks=(),
+        unplanned_fields=(
+            UnplannedField(field_name="office_hours", reason=UnplannedReason.NO_TRUST_ROWS),
+            UnplannedField(field_name="gender", reason=UnplannedReason.NO_ALLOWED_SOURCE),
+        ),
+    )
+    assert plan.tasks == ()
+
+
+# Extra tests for Part 5 rules that no numbered case covers
+
+
+@pytest.mark.parametrize("override", [{"npi": "12345"}, {"plan_version": ""}, {"case_id": ""}])
+def test_sp_rule1_plan_header(override: dict[str, Any]) -> None:
+    with pytest.raises(ValidationError):
+        _plan(**override)
+
+
+def test_sp_rule2_unknown_requested_field_refused() -> None:
+    with pytest.raises(ValidationError, match="unknown field"):
+        _plan(requested_fields=("npi_type", "provider_name", "gender", "office_hours", "fax"))
+
+
+def test_sp_rule2_duplicate_requested_field_refused() -> None:
+    with pytest.raises(ValidationError):
+        _plan(requested_fields=("npi_type", "provider_name", "gender", "office_hours", "gender"))
+
+
+def test_sp_rule3_unplanned_field_not_requested_refused() -> None:
+    with pytest.raises(ValidationError):
+        _plan(
+            unplanned_fields=(
+                UnplannedField(field_name="office_hours", reason=UnplannedReason.NO_TRUST_ROWS),
+                UnplannedField(field_name="weekend_hours", reason=UnplannedReason.NO_TRUST_ROWS),
+            )
+        )
+
+
+def test_sp_rule3_unplanned_field_twice_refused() -> None:
+    entry = UnplannedField(field_name="office_hours", reason=UnplannedReason.NO_TRUST_ROWS)
+    with pytest.raises(ValidationError):
+        _plan(unplanned_fields=(entry, entry))
+
+
+def test_sp_rule5_empty_task_fields_refused() -> None:
+    with pytest.raises(ValidationError):
+        _task(fields=(), trust_weights={})
+
+
+def test_sp_rule5_repeated_task_field_refused() -> None:
+    with pytest.raises(ValidationError):
+        _task(fields=("npi_type", "npi_type"), trust_weights={"npi_type": 0.85})
+
+
+def test_sp_rule7_extra_weight_refused() -> None:
+    with pytest.raises(ValidationError):
+        _task(trust_weights={"npi_type": 0.85, "provider_name": 0.3, "gender": 0.3, "degree": 0.5})
+
+
+def test_sp_rule7_weight_of_one_valid() -> None:
+    task = _task(trust_weights={"npi_type": 1, "provider_name": 0.3, "gender": 0.3})
+    assert task.trust_weights["npi_type"] == 1
+
+
+@pytest.mark.parametrize("params", [{"": "x"}, {"npi": ""}])
+def test_sp_rule8_empty_param_key_or_value_refused(params: dict[str, str]) -> None:
+    with pytest.raises(ValidationError):
+        _task(search_params=params)
+
+
+@pytest.mark.parametrize(
+    "key", ["api_key", "API_KEY", "TOKEN", "auth_token", "client_secret", "db_password"]
+)
+def test_sp_rule9_secret_keys_refused_and_value_hidden(key: str) -> None:
+    with pytest.raises(ValidationError, match="secrets not allowed") as caught:
+        _task(search_params={"npi": "1013489194", key: "s3cr3t-VALUE"})
+    assert "s3cr3t-VALUE" not in str(caught.value)
+
+
+def test_sp_rule9_secret_value_hidden_in_plan_errors() -> None:
+    with pytest.raises(ValidationError) as caught:
+        SearchPlan.model_validate(
+            {
+                "case_id": "C",
+                "npi": "1013489194",
+                "case_type": "TARGETED",
+                "gold_version": "g",
+                "trust_matrix_version": "t",
+                "plan_version": "p",
+                "requested_fields": ["gender"],
+                "tasks": [
+                    {
+                        "task_id": "nppes:identity",
+                        "source_id": "nppes",
+                        "data_group": "IDENTITY",
+                        "fields": ["gender"],
+                        "trust_weights": {"gender": 0.3},
+                        "search_params": {"password": "s3cr3t-VALUE"},
+                        "origin": "TRUST_MATRIX",
+                    }
+                ],
+                "skipped_sources": [],
+                "unplanned_fields": [],
+            }
+        )
+    assert "s3cr3t-VALUE" not in str(caught.value)
+
+
+def test_sp_mappings_are_read_only() -> None:
+    task = _task()
+    with pytest.raises(TypeError):
+        task.trust_weights["gender"] = 1.0  # type: ignore[index]
+    with pytest.raises(TypeError):
+        task.search_params["npi"] = "x"  # type: ignore[index]
+
+
+def test_sp_task_lookup() -> None:
+    plan = _plan()
+    assert plan.task(SourceId.NPPES, DataGroup.IDENTITY) is plan.tasks[0]
+    with pytest.raises(KeyError):
+        plan.task(SourceId.CAQH, DataGroup.IDENTITY)
+
+
+def test_sp_tasks_for_unplanned_field_is_empty() -> None:
+    assert _plan().tasks_for_field("office_hours") == ()
+
+
+def test_sp_discovery_task_and_skip_detail_valid() -> None:
+    discovery = _task(
+        task_id="google_search:location",
+        source_id=SourceId.GOOGLE_SEARCH,
+        data_group=DataGroup.LOCATION,
+        fields=("website",),
+        trust_weights={"website": 0.5},
+        search_params={"query": "Jane Doe LMHC Boston"},
+        origin=TaskOrigin.DISCOVERY,
+    )
+    skip = SkippedSource(
+        source_id=SourceId.CAQH,
+        data_group=DataGroup.IDENTITY,
+        reason=SkipReason.OUT_OF_COVERAGE,
+        detail="not in CAQH extract",
+    )
+    plan = _plan(
+        case_type=CaseType.COVERAGE,
+        requested_fields=("npi_type", "provider_name", "gender", "office_hours", "website"),
+        tasks=(_task(), discovery),
+        skipped_sources=(skip,),
+    )
+    assert plan.tasks_for_field("website") == (discovery,)
+
+
+def test_sp_extra_keys_refused() -> None:
+    with pytest.raises(ValidationError):
+        _task(score=0.9)
+    with pytest.raises(ValidationError):
+        _plan(route="HITL")

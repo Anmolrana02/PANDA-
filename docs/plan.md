@@ -39,7 +39,7 @@ One line per task; tick it when its tests pass and its PR is merged.
 - [x] common/states.py (branch feat/01-states; plan docs/plan/2026-11-25-day1-states.md)
 - [x] common/finding_key.py (branch feat/01-finding-key; plan docs/plan/2026-11-25-day2-finding-key.md; awaiting teammate review)
 - [x] common/evidence.py (branch feat/01-evidence; plan docs/plan/2026-11-25-day2-evidence.md; awaiting teammate review)
-- [ ] common/search_plan.py
+- [x] common/search_plan.py (branch feat/01-search-plan; plan docs/plan/2026-11-25-day2-search-plan.md; awaiting teammate review)
 - [ ] common/validation_report.py + a sample report that passes contract tests
 
 ### Phase 2 - walking skeleton (day 3, <YOUR NAME>)   spec: 02-skeleton.md
@@ -116,3 +116,5 @@ Never cut: the fields agreed with the mentor, checkpoints, tests.
   pass). Surprise: pydantic calls a custom __init__ from model_validate.
 - 2026-11-25 Anmol: common/evidence.py done (frozen assertion + bundle, UTC times; 264 tests
   pass). Surprise: spec split into 01-contracts-01/-02; stacked PR on finding-key.
+- 2026-11-25 Anmol: common/search_plan.py done (frozen plan, read-only weights, no secrets;
+  309 tests pass). Surprise: pydantic can't serialize MappingProxyType without a serializer.
