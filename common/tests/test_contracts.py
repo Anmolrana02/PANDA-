@@ -19,6 +19,7 @@ from common.field_catalog import (
     location_fields,
     provider_fields,
 )
+from common.finding_key import PROVIDER_SCOPE, FindingKey
 from common.states import (
     AGENT_CASE_MOVES,
     DISPATCH_MOVES,
@@ -389,5 +390,173 @@ def test_field_spec_rejects_unknown_keys() -> None:
                 "trust_fields": [],
                 "coverage": "PENDING_MENTOR",
                 "extra": 1,
+            }
+        )
+
+
+# --- Part 3: finding key (docs/specs/01-contracts.md) ---
+
+K = FindingKey
+ADDR_KEY = "addr:145 s st|boston ma 02111"
+
+
+def test_k01_provider_key() -> None:
+    key = K.for_provider("degree", "HPHC")
+    assert key.location_key == PROVIDER_SCOPE == "provider"
+    assert key.row_id() == "degree:provider"
+
+
+def test_k02_location_key_row_id() -> None:
+    assert K.for_location("phone", "HPHC", "3038479374").row_id() == "phone:3038479374"
+
+
+def test_k03_addr_key_is_reported_only() -> None:
+    assert K.for_location("practice_locations", "HPHC", ADDR_KEY).is_reported_only() is True
+
+
+def test_k04_location_field_at_provider_scope_refused() -> None:
+    with pytest.raises(ValidationError, match="phone is a location field"):
+        K.for_provider("phone", "HPHC")
+
+
+def test_k05_provider_field_at_location_refused() -> None:
+    with pytest.raises(ValidationError, match="degree is a provider field"):
+        K.for_location("degree", "HPHC", "3038479374")
+
+
+def test_k06_location_field_with_provider_key_refused() -> None:
+    with pytest.raises(ValidationError):
+        K.for_location("phone", "HPHC", "provider")
+
+
+def test_k07_empty_address_refused() -> None:
+    with pytest.raises(ValidationError, match="empty address"):
+        K.for_location("phone", "HPHC", "addr:")
+
+
+def test_k08_unknown_field_refused() -> None:
+    with pytest.raises(ValidationError, match="unknown field"):
+        K.for_location("fax", "HPHC", "3038479374")
+
+
+def test_k09_empty_representation_refused() -> None:
+    with pytest.raises(ValidationError):
+        K.for_provider("degree", "")
+
+
+def test_k10_different_locations_not_equal() -> None:
+    assert K.for_location("phone", "HPHC", "loc1") != K.for_location("phone", "HPHC", "loc2")
+
+
+def test_k11_different_representations_not_equal() -> None:
+    assert K.for_location("phone", "HPHC", "loc1") != K.for_location("phone", "REP_B", "loc1")
+
+
+def test_k12_equal_keys_collapse_in_a_set() -> None:
+    keys = {K.for_location("phone", "HPHC", "loc1"), K.for_location("phone", "HPHC", "loc1")}
+    assert len(keys) == 1
+
+
+def test_k13_key_is_frozen() -> None:
+    key = K.for_location("phone", "HPHC", "loc1")
+    with pytest.raises(ValidationError):
+        key.location_key = "loc2"
+
+
+def test_k14_round_trip_addr_key() -> None:
+    key = K.for_location("practice_locations", "HPHC", ADDR_KEY)
+    assert K.from_str(key.to_str()) == key
+
+
+def test_k15_from_str_refuses_junk() -> None:
+    with pytest.raises(ValueError):
+        K.from_str("not a key")
+
+
+def test_k16_representation_kept_exactly() -> None:
+    key = K.for_provider("degree", " HPHC")
+    assert key.representation == " HPHC"
+    assert key != K.for_provider("degree", "HPHC")
+
+
+# Extra tests for Part 3 rules that no numbered case covers
+
+
+def test_key_rule2_provider_field_with_addr_key_refused() -> None:
+    with pytest.raises(ValidationError, match="degree is a provider field"):
+        K.for_location("degree", "HPHC", ADDR_KEY)
+
+
+def test_key_rule4_empty_location_key_refused() -> None:
+    with pytest.raises(ValidationError):
+        K.for_location("phone", "HPHC", "")
+
+
+def test_key_rule4_non_string_part_not_coerced() -> None:
+    with pytest.raises(ValidationError):
+        K.model_validate(
+            {"field_name": "phone", "representation": "HPHC", "location_key": 3038479374}
+        )
+
+
+def test_key_rule4_location_key_case_kept() -> None:
+    assert K.for_location("phone", "HPHC", "ADDR:X").location_key == "ADDR:X"
+
+
+def test_key_rule6_equal_keys_hash_equal_and_work_as_dict_keys() -> None:
+    a = K.for_location("phone", "HPHC", "loc1")
+    b = K.for_location("phone", "HPHC", "loc1")
+    assert a == b
+    assert hash(a) == hash(b)
+    assert {a: "decision"}[b] == "decision"
+
+
+def test_key_rule8_round_trip_awkward_characters() -> None:
+    key = K.for_location("phone", "A:B|C", 'addr:1 "x" st: unit|2, \\ é')
+    text = key.to_str()
+    assert json.loads(text) == [key.field_name, key.representation, key.location_key]
+    assert K.from_str(text) == key
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "",
+        '["phone","HPHC"]',
+        '["phone","HPHC","loc1","extra"]',
+        '["phone","HPHC",1]',
+        '{"field_name":"phone","representation":"HPHC","location_key":"loc1"}',
+        '"phone:loc1"',
+        '["fax","HPHC","loc1"]',
+        '["phone","HPHC","provider"]',
+    ],
+)
+def test_key_rule9_from_str_never_guesses(text: str) -> None:
+    with pytest.raises(ValueError):
+        K.from_str(text)
+
+
+def test_key_is_provider_scope() -> None:
+    assert K.for_provider("degree", "HPHC").is_provider_scope() is True
+    assert K.for_location("phone", "HPHC", "loc1").is_provider_scope() is False
+
+
+def test_key_gold_location_is_not_reported_only() -> None:
+    assert K.for_location("phone", "HPHC", "3038479374").is_reported_only() is False
+
+
+def test_key_positional_form_from_spec() -> None:
+    assert K("degree", "HPHC", "provider") == K.for_provider("degree", "HPHC")
+    assert K("phone", "HPHC", "3038479374") == K.for_location("phone", "HPHC", "3038479374")
+
+
+def test_key_rule10_display_text_refused() -> None:
+    with pytest.raises(ValidationError):
+        K.model_validate(
+            {
+                "field_name": "phone",
+                "representation": "HPHC",
+                "location_key": "loc1",
+                "address": "145 S St, Boston MA",
             }
         )

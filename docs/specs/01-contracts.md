@@ -243,6 +243,103 @@ Totals: 29 fields, 13 COVERED, 16 PENDING_MENTOR.
 - [x] Tick "common/field_catalog.py" in docs/plan.md, add a session log line
 <next>
 
+
+---
+
+## Part 3 - common/finding_key.py
+
+### What it is
+
+The unique name tag of one finding: which field, in which directory
+representation, at which location (or for the provider as a whole).
+Reviewer decisions, field history and rationale are all stored under it.
+
+    FindingKey = (field_name, representation, location_key)
+
+### Inputs and outputs
+
+- Input: field name, representation, location key.
+- Output: a frozen Pydantic v2 model that can be used as a dict key.
+  Examples from the sample reports:
+  - FindingKey("degree", "HPHC", "provider")
+  - FindingKey("phone", "HPHC", "3038479374")
+  - FindingKey("practice_locations", "HPHC", "addr:145 s st|boston ma 02111")
+- Helpers:
+  - FindingKey.for_provider(field_name, representation)
+  - FindingKey.for_location(field_name, representation, location_key)
+  - key.row_id() -> "phone:3038479374" (same format as validation_row_id)
+  - key.is_provider_scope(), key.is_reported_only()
+  - key.to_str() / FindingKey.from_str(text) for URLs and database columns
+
+### Vocabulary
+
+- PROVIDER_SCOPE = "provider": the location key of every provider-level field.
+- A location key starting with "addr:" is a location found only in evidence
+  (no Gold practice_location_id).
+
+### Rules
+
+1. field_name must be one of the 29 fields in field_catalog.py.
+2. A PROVIDER field must use location key "provider".
+3. A LOCATION field must not use "provider"; its key is either a Gold
+   practice_location_id or "addr:" followed by at least one character.
+4. representation and location_key must be non-empty and are kept exactly as
+   given: no trimming, no changing case. Do not hard-code "HPHC".
+5. A key is frozen: its parts cannot change after it is made.
+6. Two keys are equal only if all three parts are equal, and equal keys
+   have the same hash.
+7. row_id() returns "<field_name>:<location_key>", matching the sample
+   reports exactly.
+8. to_str() and from_str() round-trip every key, including location keys
+   that contain ":" or "|". (Store the string as a JSON list of the three
+   parts, not by joining with a separator.)
+9. from_str() on broken text raises an error; it never guesses.
+10. Display text (addresses, office names) is never part of the key.
+
+### Out of scope
+
+- The display context of a location (address text, office name); that lives
+  in the validation row (Part 6)
+- How the "addr:" text is built from an address (validation phase)
+- Review ordering of findings (portal)
+- Storing keys in a database
+
+### Acceptance tests
+
+| # | Given | When | Then |
+|---|---|---|---|
+| 1 | for_provider("degree", "HPHC") | make it | location_key "provider", row_id "degree:provider" |
+| 2 | for_location("phone", "HPHC", "3038479374") | make it | row_id "phone:3038479374" |
+| 3 | for_location("practice_locations", "HPHC", "addr:145 s st\|boston ma 02111") | make it | is_reported_only() is True |
+| 4 | for_provider("phone", "HPHC") | make it | error: phone is a location field |
+| 5 | for_location("degree", "HPHC", "3038479374") | make it | error: degree is a provider field |
+| 6 | for_location("phone", "HPHC", "provider") | make it | error |
+| 7 | for_location("phone", "HPHC", "addr:") | make it | error: empty address |
+| 8 | field_name "fax" | make it | error: unknown field |
+| 9 | representation "" | make it | error |
+| 10 | phone key at location 1 and at location 2 | compare | not equal |
+| 11 | same phone key in "HPHC" and in "REP_B" | compare | not equal |
+| 12 | two keys made from the same parts | put both in a set | set has 1 item |
+| 13 | any key | try to change location_key | error (frozen) |
+| 14 | the key from test 3 | to_str() then from_str() | equal to the original |
+| 15 | text "not a key" | from_str() | error |
+| 16 | representation " HPHC" with a space | make it | kept exactly, not equal to "HPHC" |
+
+### Files
+
+- New: common/finding_key.py
+- Changed: common/tests/test_contracts.py (add tests 1-16)
+- Hand-written by owner: none. The owner checks the rules above; Claude Code
+  writes the code.
+
+### Tasks
+
+- [x] Write failing tests for cases 1-16
+- [x] Write common/finding_key.py until they pass
+- [x] ruff, mypy, pytest pass
+- [ ] Teammate reviews (they store decisions under this key)
+- [x] Tick "common/finding_key.py" in docs/plan.md, add a session log line
+
 ## Notes for the next session
 
 - 2026-11-25: Part 1 (states.py) done: 3 StrEnum machines, one read-only move
@@ -262,3 +359,6 @@ Totals: 29 fields, 13 COVERED, 16 PENDING_MENTOR.
   panel_status_accepting_new_patients). Confirm with the mentor which are current.
 - Next: Part 3 of spec 01 (evidence, search_plan, finding_key); its section needs
   writing first.
+- 2026-11-25: Part 3 (finding_key.py) code done, 224 tests pass; waiting on teammate
+  review. Gotcha: pydantic sends model_validate through an overridden __init__, so
+  FindingKey.__init__ passes **extra on to pydantic to keep extra="forbid" working.
