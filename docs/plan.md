@@ -6,11 +6,11 @@ One line per task; tick it when its tests pass and its PR is merged.
 
 ## Now
 
-- Phase: 0 - setup and contracts
-- Next task for <YOUR NAME>: <task>
+- Phase: 2 - walking skeleton (Phase 1 contracts coded, in review)
+- Next task for <YOUR NAME>: walking skeleton, spec docs/specs/02-skeleton.md
 - Next task for <TEAMMATE>: <task>
-- Blocked on: both owners' OK to `ruff format` the 7 files in `common/`
-  (CI's format check fails until then)
+- Blocked on: teammate review of the 4 stacked contract PRs (finding-key, evidence,
+  search-plan, validation-report). `ruff format --check .` now passes repo-wide.
 
 ## Phases
 
@@ -40,7 +40,9 @@ One line per task; tick it when its tests pass and its PR is merged.
 - [x] common/finding_key.py (branch feat/01-finding-key; plan docs/plan/2026-11-25-day2-finding-key.md; awaiting teammate review)
 - [x] common/evidence.py (branch feat/01-evidence; plan docs/plan/2026-11-25-day2-evidence.md; awaiting teammate review)
 - [x] common/search_plan.py (branch feat/01-search-plan; plan docs/plan/2026-11-25-day2-search-plan.md; awaiting teammate review)
-- [ ] common/validation_report.py + a sample report that passes contract tests
+- [x] common/validation_report.py + a sample report that passes contract tests (branch
+      feat/01-validation-report; plan docs/plan/2026-11-25-day2-validation-report.md;
+      awaiting teammate review)
 
 ### Phase 2 - walking skeleton (day 3, <YOUR NAME>)   spec: 02-skeleton.md
 - [ ] Graph with seven stub nodes and a checkpointer
@@ -118,3 +120,5 @@ Never cut: the fields agreed with the mentor, checkpoints, tests.
   pass). Surprise: spec split into 01-contracts-01/-02; stacked PR on finding-key.
 - 2026-11-25 Anmol: common/search_plan.py done (frozen plan, read-only weights, no secrets;
   309 tests pass). Surprise: pydantic can't serialize MappingProxyType without a serializer.
+- 2026-11-25 Anmol: common/validation_report.py done (schema-7 report, computed totals,
+  finding_keys; 360 tests pass). Phase 1 coded; reading guide in docs/common-notes.md. Surprise: `schema` shadows BaseModel.schema.

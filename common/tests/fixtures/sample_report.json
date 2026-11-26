@@ -1,0 +1,243 @@
+{
+  "report_id": "RPT-0001",
+  "case_id": "CASE-SAMPLE0001",
+  "practitioner_npi": "1000000004",
+  "validated_at": "2026-11-20T15:00:00Z",
+  "gold_version": "gold-2026-11-01",
+  "trust_matrix_version": "trust-sample-v1",
+  "validations": [
+    {
+      "schema": 7,
+      "field": "degree",
+      "representation": "HPHC",
+      "comparison_mode": "ONE_TO_ONE",
+      "data_group": "IDENTITY",
+      "status": "CONFIRMED",
+      "rationale": "CAQH and NPPES both list the directory degree.",
+      "sources": [
+        {
+          "source_id": "caqh",
+          "value": "LMHC",
+          "url": "caqh:sample-row-1",
+          "data_group": "IDENTITY",
+          "quality_label": "STATED",
+          "source_last_update": "2026-06-01",
+          "retrieved_at": "2026-11-20T14:50:00Z",
+          "matches_directory": true,
+          "status_detail": null
+        },
+        {
+          "source_id": "nppes",
+          "value": "lmhc, other degree",
+          "url": "https://npiregistry.example.test/api/?number=1000000004",
+          "data_group": "IDENTITY",
+          "quality_label": "STATED",
+          "source_last_update": "2025-03-04",
+          "retrieved_at": "2026-11-20T14:51:00Z",
+          "matches_directory": true,
+          "status_detail": null
+        }
+      ],
+      "validation_rows": [
+        {
+          "validation_row_id": "degree:provider",
+          "location_group_id": null,
+          "directory_location_id": null,
+          "location_context": null,
+          "evidence_location_refs": [],
+          "comparison_type": "MATCHED",
+          "gold_value": "LMHC",
+          "evidence_value": "lmhc, other degree",
+          "recommended_value": "LMHC",
+          "validation_status": "CONFIRMED",
+          "reason_code": "VALUE_MATCH",
+          "evidence_sources": ["caqh", "nppes"],
+          "confidence": {
+            "scored": true,
+            "score": 0.73,
+            "action": "NO_CHANGE",
+            "factors": {
+              "authority": 0.85,
+              "recency": 0.0,
+              "quality": 1.0,
+              "reliability": 0.8,
+              "corroboration": 1.0
+            },
+            "penalties": null
+          }
+        }
+      ]
+    },
+    {
+      "schema": 7,
+      "field": "practice_locations",
+      "representation": "HPHC",
+      "comparison_mode": "SET",
+      "data_group": "LOCATION",
+      "status": "CANNOT_BE_VERIFIED",
+      "rationale": "The directory office is confirmed; a second office appears only on the practice website.",
+      "sources": [
+        {
+          "source_id": "caqh",
+          "value": "100 Main St, Springfield MA 01103",
+          "url": "caqh:sample-row-1",
+          "data_group": "LOCATION",
+          "quality_label": "TRANSFORMED",
+          "source_last_update": "2026-06-01",
+          "retrieved_at": "2026-11-20T14:50:00Z",
+          "matches_directory": true,
+          "status_detail": null
+        },
+        {
+          "source_id": "provider_website",
+          "value": "22 Elm St, Springfield MA 01103",
+          "url": "https://practice.example.test/locations",
+          "data_group": "LOCATION",
+          "quality_label": "STATED",
+          "source_last_update": null,
+          "retrieved_at": "2026-11-20T14:55:00Z",
+          "matches_directory": false,
+          "status_detail": null
+        }
+      ],
+      "validation_rows": [
+        {
+          "validation_row_id": "practice_locations:PL-0001",
+          "location_group_id": "PL-0001",
+          "directory_location_id": "PL-0001",
+          "location_context": {
+            "display_address": "100 Main St, Springfield MA 01103",
+            "location_name": "Sample Counseling Center",
+            "practice_location_id": "PL-0001"
+          },
+          "evidence_location_refs": [
+            {"source_id": "caqh", "source_location_id": "CAQH-LOC-1"}
+          ],
+          "comparison_type": "MATCHED",
+          "gold_value": "100 Main St, Springfield MA 01103",
+          "evidence_value": "100 main st, springfield ma 01103",
+          "recommended_value": "100 Main St, Springfield MA 01103",
+          "validation_status": "CONFIRMED",
+          "reason_code": "VALUE_MATCH",
+          "evidence_sources": ["caqh"],
+          "confidence": {
+            "scored": true,
+            "score": 0.81,
+            "action": "NO_CHANGE",
+            "factors": null,
+            "penalties": null
+          }
+        },
+        {
+          "validation_row_id": "practice_locations:addr:22 elm st|springfield ma 01103",
+          "location_group_id": "addr:22 elm st|springfield ma 01103",
+          "directory_location_id": null,
+          "location_context": {
+            "display_address": "22 Elm St, Springfield MA 01103",
+            "location_name": null,
+            "practice_location_id": null
+          },
+          "evidence_location_refs": [
+            {"source_id": "provider_website", "source_location_id": "web-loc-2"}
+          ],
+          "comparison_type": "ONLY_IN_EVIDENCE",
+          "gold_value": null,
+          "evidence_value": "22 Elm St, Springfield MA 01103",
+          "recommended_value": null,
+          "validation_status": "CANNOT_BE_VERIFIED",
+          "reason_code": "NOT_CORROBORATED",
+          "evidence_sources": ["provider_website"],
+          "confidence": {
+            "scored": false,
+            "score": null,
+            "action": "REVIEW",
+            "factors": null,
+            "penalties": null
+          }
+        }
+      ]
+    },
+    {
+      "schema": 7,
+      "field": "phone",
+      "representation": "HPHC",
+      "comparison_mode": "BY_LOCATION",
+      "data_group": "LOCATION",
+      "status": "DISCREPANCY",
+      "rationale": "CAQH lists a different phone number for the directory office.",
+      "sources": [
+        {
+          "source_id": "caqh",
+          "value": "(413) 555-0199",
+          "url": "caqh:sample-row-1",
+          "data_group": "LOCATION",
+          "quality_label": "STATED",
+          "source_last_update": "2026-06-01",
+          "retrieved_at": "2026-11-20T14:50:00Z",
+          "matches_directory": false,
+          "status_detail": null
+        }
+      ],
+      "validation_rows": [
+        {
+          "validation_row_id": "phone:PL-0001",
+          "location_group_id": "PL-0001",
+          "directory_location_id": "PL-0001",
+          "location_context": {
+            "display_address": "100 Main St, Springfield MA 01103",
+            "location_name": "Sample Counseling Center",
+            "practice_location_id": "PL-0001"
+          },
+          "evidence_location_refs": [
+            {"source_id": "caqh", "source_location_id": "CAQH-LOC-1"}
+          ],
+          "comparison_type": "VALUE_MISMATCH",
+          "gold_value": "(413) 555-0100",
+          "evidence_value": "(413) 555-0199",
+          "recommended_value": "(413) 555-0199",
+          "validation_status": "DISCREPANCY",
+          "reason_code": "VALUE_MISMATCH",
+          "evidence_sources": ["caqh"],
+          "confidence": {
+            "scored": true,
+            "score": 0.42,
+            "action": "REVIEW",
+            "factors": {
+              "authority": 0.7,
+              "recency": 0.5,
+              "quality": 1.0,
+              "reliability": 0.8,
+              "corroboration": 0.0
+            },
+            "penalties": {"single_source": 0.1}
+          }
+        },
+        {
+          "validation_row_id": "phone:addr:22 elm st|springfield ma 01103",
+          "location_group_id": "addr:22 elm st|springfield ma 01103",
+          "directory_location_id": null,
+          "location_context": {
+            "display_address": "22 Elm St, Springfield MA 01103",
+            "location_name": null,
+            "practice_location_id": null
+          },
+          "evidence_location_refs": [],
+          "comparison_type": "MISSING_VALUE",
+          "gold_value": null,
+          "evidence_value": null,
+          "recommended_value": null,
+          "validation_status": "CANNOT_BE_VERIFIED",
+          "reason_code": "NOT_REPORTED_FOR_LOCATION",
+          "evidence_sources": [],
+          "confidence": {
+            "scored": false,
+            "score": null,
+            "action": "REVIEW",
+            "factors": null,
+            "penalties": null
+          }
+        }
+      ]
+    }
+  ]
+}

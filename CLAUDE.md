@@ -172,4 +172,4 @@ Run tests, ruff and mypy before saying a task is finished.
 
 ## Current phase
 
-Phase 0 - repo setup and contracts. (Update this line when the phase changes.)
+Phase 2 - walking skeleton (Phase 1 contracts coded, in review). (Update this line when the phase changes.)

@@ -1,5 +1,6 @@
 """Tests that every contract validates good examples and rejects bad ones, including a sample report."""
 
+import copy
 import json
 from datetime import UTC, date, datetime, timedelta, timezone
 from pathlib import Path
@@ -54,6 +55,7 @@ from common.states import (
     is_final,
     require_transition,
 )
+from common.validation_report import ConflictRef, ReasonCode, ValidationReport
 
 # --- Part 1: states (docs/specs/01-contracts.md) ---
 
@@ -1191,3 +1193,396 @@ def test_sp_extra_keys_refused() -> None:
         _task(score=0.9)
     with pytest.raises(ValidationError):
         _plan(route="HITL")
+
+
+# --- Part 6: validation report (docs/specs/01-contracts-02.md) ---
+
+SAMPLE_REPORT = FIXTURES / "sample_report.json"
+ADDR = "addr:22 elm st|springfield ma 01103"
+
+
+def _sample() -> dict[str, Any]:
+    """A fresh copy of the hand-checked sample report."""
+    data: dict[str, Any] = json.loads(SAMPLE_REPORT.read_text(encoding="utf-8"))
+    return data
+
+
+def _load(data: dict[str, Any]) -> ValidationReport:
+    return ValidationReport.model_validate(data)
+
+
+def _entry(data: dict[str, Any], index: int) -> dict[str, Any]:
+    entry: dict[str, Any] = data["validations"][index]
+    return entry
+
+
+def _row(data: dict[str, Any], entry: int, row: int) -> dict[str, Any]:
+    found: dict[str, Any] = _entry(data, entry)["validation_rows"][row]
+    return found
+
+
+DEGREE, LOCATIONS, PHONE = 0, 1, 2
+
+
+def test_r01_sample_is_valid() -> None:
+    report = _load(_sample())
+    assert [e.field for e in report.validations] == ["degree", "practice_locations", "phone"]
+
+
+def test_r02_totals_come_from_entries() -> None:
+    report = _load(_sample())
+    assert report.total_validations == 3
+    assert report.total_conflicts == 1
+
+
+def test_r03_unknown_field_names_the_entry() -> None:
+    data = _sample()
+    _entry(data, DEGREE)["field"] = "fax"
+    with pytest.raises(ValidationError, match="fax/HPHC"):
+        _load(data)
+
+
+def test_r04_duplicate_entry_refused() -> None:
+    data = _sample()
+    data["validations"].insert(1, copy.deepcopy(_entry(data, DEGREE)))
+    with pytest.raises(ValidationError, match="duplicate entry"):
+        _load(data)
+
+
+def test_r05_degree_mode_must_be_one_to_one() -> None:
+    data = _sample()
+    _entry(data, DEGREE)["comparison_mode"] = "BY_LOCATION"
+    with pytest.raises(ValidationError, match="mode must be ONE_TO_ONE"):
+        _load(data)
+
+
+def test_r06_only_practice_locations_may_be_set() -> None:
+    data = _sample()
+    _entry(data, PHONE)["comparison_mode"] = "SET"
+    with pytest.raises(ValidationError, match="only practice_locations may be SET"):
+        _load(data)
+
+
+def test_r07_one_to_one_needs_exactly_one_row() -> None:
+    data = _sample()
+    extra = copy.deepcopy(_row(data, DEGREE, 0))
+    extra["validation_row_id"] = "degree:provider-2"
+    _entry(data, DEGREE)["validation_rows"].append(extra)
+    with pytest.raises(ValidationError, match="ONE_TO_ONE needs exactly one row"):
+        _load(data)
+
+
+def test_r08_one_to_one_row_has_no_location_group() -> None:
+    data = _sample()
+    _row(data, DEGREE, 0)["location_group_id"] = "PL-0001"
+    with pytest.raises(ValidationError):
+        _load(data)
+
+
+def test_r09_one_to_one_row_id_must_be_provider() -> None:
+    data = _sample()
+    _row(data, DEGREE, 0)["validation_row_id"] = "degree:3038479374"
+    with pytest.raises(ValidationError, match="must be 'degree:provider'"):
+        _load(data)
+
+
+def test_r10_by_location_needs_set_entry() -> None:
+    data = _sample()
+    del data["validations"][LOCATIONS]
+    with pytest.raises(ValidationError):
+        _load(data)
+
+
+def test_r11_set_entry_must_come_first() -> None:
+    data = _sample()
+    entries = data["validations"]
+    entries[LOCATIONS], entries[PHONE] = entries[PHONE], entries[LOCATIONS]
+    with pytest.raises(ValidationError, match="SET must come first"):
+        _load(data)
+
+
+def test_r12_by_location_group_must_be_in_set() -> None:
+    data = _sample()
+    row = _row(data, PHONE, 0)
+    row.update(
+        validation_row_id="phone:PL-0002",
+        location_group_id="PL-0002",
+        directory_location_id="PL-0002",
+    )
+    with pytest.raises(ValidationError):
+        _load(data)
+
+
+def test_r13_by_location_context_must_match_set() -> None:
+    data = _sample()
+    _row(data, PHONE, 0)["location_context"]["display_address"] = "100 MAIN STREET"
+    with pytest.raises(ValidationError):
+        _load(data)
+
+
+def test_r14_addr_row_has_no_directory_location() -> None:
+    data = _sample()
+    _row(data, LOCATIONS, 1)["directory_location_id"] = "PL-0009"
+    with pytest.raises(ValidationError):
+        _load(data)
+
+
+def test_r15_confirmed_row_reason_must_fit() -> None:
+    data = _sample()
+    _row(data, DEGREE, 0)["reason_code"] = "NO_VALUE"
+    with pytest.raises(ValidationError):
+        _load(data)
+
+
+def test_r16_cannot_be_verified_has_no_recommendation() -> None:
+    data = _sample()
+    _row(data, PHONE, 1)["recommended_value"] = "(413) 555-0100"
+    with pytest.raises(ValidationError):
+        _load(data)
+
+
+def test_r17_discrepancy_needs_recommendation() -> None:
+    data = _sample()
+    _row(data, PHONE, 0)["recommended_value"] = None
+    with pytest.raises(ValidationError):
+        _load(data)
+
+
+def test_r18_score_above_one_refused() -> None:
+    data = _sample()
+    _row(data, DEGREE, 0)["confidence"]["score"] = 1.4
+    with pytest.raises(ValidationError):
+        _load(data)
+
+
+def test_r19_unscored_with_score_refused() -> None:
+    data = _sample()
+    _row(data, LOCATIONS, 1)["confidence"]["score"] = 0.5
+    with pytest.raises(ValidationError):
+        _load(data)
+
+
+def test_r20_factors_missing_recency_refused() -> None:
+    data = _sample()
+    del _row(data, DEGREE, 0)["confidence"]["factors"]["recency"]
+    with pytest.raises(ValidationError):
+        _load(data)
+
+
+def test_r21_row_source_must_be_in_entry_sources() -> None:
+    data = _sample()
+    _row(data, LOCATIONS, 0)["evidence_sources"].append("nppes")
+    with pytest.raises(ValidationError):
+        _load(data)
+
+
+def test_r22_finding_keys_one_per_row_in_order() -> None:
+    report = _load(_sample())
+    keys = report.finding_keys()
+    row_ids = [row.validation_row_id for e in report.validations for row in e.validation_rows]
+    assert len(keys) == 5
+    assert [k.row_id() for k in keys] == row_ids
+    assert keys[0] == FindingKey.for_provider("degree", "HPHC")
+    assert keys[2].is_reported_only()
+
+
+def test_r23_json_round_trip() -> None:
+    report = _load(_sample())
+    assert ValidationReport.model_validate_json(report.model_dump_json()) == report
+
+
+def test_r24_report_is_frozen() -> None:
+    row = _load(_sample()).validations[0].validation_rows[0]
+    with pytest.raises(ValidationError):
+        row.gold_value = "MD"
+
+
+def test_r25_typed_in_totals_must_match() -> None:
+    data = _sample()
+    data["total_conflicts"] = 9
+    with pytest.raises(ValidationError):
+        _load(data)
+    good = _sample()
+    good.update(
+        total_validations=3,
+        total_conflicts=1,
+        conflicts=[{"field": "phone", "representation": "HPHC"}],
+    )
+    assert _load(good).total_conflicts == 1
+
+
+# Extra tests for Part 6 rules that no numbered case covers
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"practitioner_npi": "12345"},
+        {"trust_matrix_version": ""},
+        {"report_id": ""},
+        {"validated_at": "2026-11-20T15:00:00"},
+    ],
+)
+def test_rp_rule1_report_header(override: dict[str, Any]) -> None:
+    data = _sample()
+    data.update(override)
+    with pytest.raises(ValidationError):
+        _load(data)
+
+
+def test_rp_rule1_validated_at_stored_in_utc() -> None:
+    data = _sample()
+    data["validated_at"] = "2026-11-20T20:30:00+05:30"
+    validated_at = _load(data).validated_at
+    assert validated_at == datetime(2026, 11, 20, 15, 0, tzinfo=UTC)
+    assert validated_at.utcoffset() == timedelta(0)
+
+
+def test_rp_rule3_conflicts_list() -> None:
+    assert _load(_sample()).conflicts == (ConflictRef(field="phone", representation="HPHC"),)
+
+
+def test_rp_rule3_fatal_flaw_is_a_conflict() -> None:
+    data = _sample()
+    _entry(data, DEGREE)["status"] = "FATAL_FLAW"
+    report = _load(data)
+    assert report.total_conflicts == 2
+    assert report.conflicts[0] == ConflictRef(field="degree", representation="HPHC")
+
+
+def test_rp_rule4_schema_must_be_7() -> None:
+    data = _sample()
+    _entry(data, DEGREE)["schema"] = 6
+    with pytest.raises(ValidationError):
+        _load(data)
+
+
+def test_rp_rule4_json_key_is_schema() -> None:
+    dumped = json.loads(_load(_sample()).model_dump_json())
+    assert dumped["validations"][0]["schema"] == 7
+    assert "schema_version" not in dumped["validations"][0]
+
+
+def test_rp_rule4_empty_representation_refused() -> None:
+    data = _sample()
+    _entry(data, DEGREE)["representation"] = ""
+    with pytest.raises(ValidationError):
+        _load(data)
+
+
+def test_rp_rule6_entry_needs_a_row() -> None:
+    data = _sample()
+    _entry(data, PHONE)["validation_rows"] = []
+    with pytest.raises(ValidationError):
+        _load(data)
+
+
+def test_rp_rule6_row_ids_unique() -> None:
+    data = _sample()
+    rows = _entry(data, LOCATIONS)["validation_rows"]
+    rows.append(copy.deepcopy(rows[0]))
+    with pytest.raises(ValidationError, match="rule 6"):
+        _load(data)
+
+
+def test_rp_rule11_set_row_id_must_match_group() -> None:
+    data = _sample()
+    _row(data, LOCATIONS, 0)["validation_row_id"] = "practice_locations:PL-9999"
+    with pytest.raises(ValidationError, match="rule 11"):
+        _load(data)
+
+
+def test_rp_rule12_directory_id_must_equal_group() -> None:
+    data = _sample()
+    _row(data, LOCATIONS, 0)["directory_location_id"] = "PL-0002"
+    with pytest.raises(ValidationError, match="rule 12"):
+        _load(data)
+
+
+def test_rp_rule13_fatal_flaw_accepts_any_reason() -> None:
+    data = _sample()
+    row = _row(data, DEGREE, 0)
+    row["validation_status"] = "FATAL_FLAW"
+    row["reason_code"] = "NO_VALUE"
+    assert _load(data).validations[0].validation_rows[0].reason_code is ReasonCode.NO_VALUE
+
+
+def test_rp_rule15_scored_needs_a_score() -> None:
+    data = _sample()
+    _row(data, DEGREE, 0)["confidence"]["score"] = None
+    with pytest.raises(ValidationError):
+        _load(data)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [{"quality": 1.2}, {"luck": 0.5}, {"recency": -0.1}],
+)
+def test_rp_rule16_bad_factors_refused(change: dict[str, float]) -> None:
+    data = _sample()
+    _row(data, DEGREE, 0)["confidence"]["factors"].update(change)
+    with pytest.raises(ValidationError):
+        _load(data)
+
+
+def test_rp_rule9_applies_per_representation() -> None:
+    data = _sample()
+    rep_b = copy.deepcopy(_entry(data, DEGREE))
+    rep_b["representation"] = "REP_B"
+    data["validations"].append(rep_b)
+    report = _load(data)
+    assert report.total_validations == 4
+    assert report.finding_keys()[-1] == FindingKey.for_provider("degree", "REP_B")
+
+
+def test_rp_location_group_provider_refused() -> None:
+    data = _sample()
+    _row(data, LOCATIONS, 0).update(
+        validation_row_id="practice_locations:provider",
+        location_group_id="provider",
+        directory_location_id="provider",
+    )
+    with pytest.raises(ValidationError):
+        _load(data)
+
+
+def test_rp_location_group_empty_addr_refused() -> None:
+    data = _sample()
+    _row(data, LOCATIONS, 1).update(
+        validation_row_id="practice_locations:addr:", location_group_id="addr:"
+    )
+    with pytest.raises(ValidationError):
+        _load(data)
+
+
+def test_rp_location_row_needs_a_group() -> None:
+    data = _sample()
+    _row(data, LOCATIONS, 0).update(location_group_id=None, directory_location_id=None)
+    with pytest.raises(ValidationError):
+        _load(data)
+
+
+def test_rp_old_sample_fields_refused() -> None:
+    data = _sample()
+    _entry(data, DEGREE)["conflict_flag"] = False
+    with pytest.raises(ValidationError):
+        _load(data)
+
+
+def test_rp_rule19_error_names_entry_and_rule() -> None:
+    data = _sample()
+    _row(data, DEGREE, 0)["reason_code"] = "NO_VALUE"
+    with pytest.raises(ValidationError) as caught:
+        _load(data)
+    text = str(caught.value)
+    assert "degree/HPHC" in text
+    assert "rule 13" in text
+    assert caught.value.error_count() == 1
+
+
+def test_rp_sample_fixture_is_made_up() -> None:
+    # Guard: the fixture must stay hand-made, never a copy of seed data.
+    assert _sample()["practitioner_npi"] == "1000000004"
+    assert ADDR in {
+        row.location_group_id for row in _load(_sample()).validations[2].validation_rows
+    }
