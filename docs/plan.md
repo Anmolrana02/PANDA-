@@ -34,11 +34,12 @@ One line per task; tick it when its tests pass and its PR is merged.
   - [ ] MLflow shows one trace from a toy LangGraph run (stop at one hour;
         if it fails, record the fallback in docs/decisions/)
 
-### Phase 1 - contracts (days 1-2, both)   spec: docs/specs/01-contracts.md
+### Phase 1 - contracts (days 1-2, both)   spec: docs/specs/01-contracts-01.md, 01-contracts-02.md
 - [x] common/field_catalog.py - the 29 fields and their level (awaiting teammate review)
 - [x] common/states.py (branch feat/01-states; plan docs/plan/2026-11-25-day1-states.md)
 - [x] common/finding_key.py (branch feat/01-finding-key; plan docs/plan/2026-11-25-day2-finding-key.md; awaiting teammate review)
-- [ ] common/evidence.py, common/search_plan.py
+- [x] common/evidence.py (branch feat/01-evidence; plan docs/plan/2026-11-25-day2-evidence.md; awaiting teammate review)
+- [ ] common/search_plan.py
 - [ ] common/validation_report.py + a sample report that passes contract tests
 
 ### Phase 2 - walking skeleton (day 3, <YOUR NAME>)   spec: 02-skeleton.md
@@ -113,3 +114,5 @@ Never cut: the fields agreed with the mentor, checkpoints, tests.
   pass); added pydantic. Surprise: Gold has duplicate-looking specialty/role columns.
 - 2026-11-25 Anmol: common/finding_key.py done (frozen FindingKey, JSON to_str/from_str; 224 tests
   pass). Surprise: pydantic calls a custom __init__ from model_validate.
+- 2026-11-25 Anmol: common/evidence.py done (frozen assertion + bundle, UTC times; 264 tests
+  pass). Surprise: spec split into 01-contracts-01/-02; stacked PR on finding-key.
